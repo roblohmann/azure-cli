@@ -14,29 +14,55 @@ fi
 # Set the subscription
 az account set --subscription $SUBSCRIPTION_ID
 
-# Function to update FTP state for a specific App Service
+# Functions to update FTP state for a specific App Service
+update_ftp_state_for_slot() {
+    local rg=$1
+    local app_name=$2
+    local slot=$3
+
+    # Get the current FTP state
+    FTP_STATE=$(az webapp config show --resource-group "$rg" --name "$app_name" --slot "$slot" --query "ftpsState" -o tsv)
+
+    echo "App Service: $app_name, Slot: $slot, Current FTP State: $FTP_STATE"
+
+    # Check if FTP is allowed
+    if [ "$FTP_STATE" == "AllAllowed" ]; then
+        # Change to FTPS Only
+        echo "Changing FTP state to FTPS Only for App Service: $app_name, Slot: $slot"
+        az webapp config set --resource-group "$rg" --name "$app_name" --slot "$slot" --ftps-state FtpsOnly -o none
+        echo " "
+    else
+        echo "No changes needed for App Service: $app_name, Slot: $slot"
+        echo " "
+    fi
+}
+
 update_ftp_state() {
     local rg=$1
     local app_name=$2
 
+    # First, update the FTP state for the production slot (if any)
+    FTP_STATE=$(az webapp config show --resource-group "$rg" --name "$app_name" --query "ftpsState" -o tsv)
+
+    echo "App Service: $app_name, Slot: production, Current FTP State: $FTP_STATE"
+
+    # Check if FTP is allowed
+    if [ "$FTP_STATE" == "AllAllowed" ]; then
+        # Change to FTPS Only
+        echo "Changing FTP state to FTPS Only for App Service: $app_name, Slot: production"
+        az webapp config set --resource-group "$rg" --name "$app_name" --ftps-state FtpsOnly -o none
+        echo " "
+    else
+        echo "No changes needed for App Service: $app_name, Slot: production"
+        echo " "
+    fi
+
     # Get all slots including the production slot
     slots=$(az webapp deployment slot list --resource-group "$rg" --name "$app_name" --query "[].name" -o tsv)
-    slots+=" production" # Adding production slot as it's not returned in the slot list
+    #slots+=" PRODUCTION" # Adding production slot as it's not returned in the slot list
 
     for slot in $slots; do
-        # Get the current FTP state
-        FTP_STATE=$(az webapp config show --resource-group "$rg" --name "$app_name" --slot "$slot" --query "ftpsState" -o tsv)
-
-        echo "App Service: $app_name, Slot: $slot, Current FTP State: $FTP_STATE"
-
-        # Check if FTP is allowed
-        if [ "$FTP_STATE" == "AllAllowed" ]; then
-            # Change to FTPS Only
-            echo "Changing FTP state to FTPS Only for App Service: $app_name, Slot: $slot"
-            az webapp config set --resource-group "$rg" --name "$app_name" --slot "$slot" --ftps-state FtpsOnly
-        else
-            echo "No changes needed for App Service: $app_name, Slot: $slot"
-        fi
+        update_ftp_state_for_slot "$rg" "$app_name" "$slot"
     done
 }
 
